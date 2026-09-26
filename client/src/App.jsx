@@ -12,7 +12,6 @@ import Dashboard from "./pages/Dashboard";
 import Products from "./pages/Products";
 import Receipts from "./pages/Receipts";
 import DeliveryOrders from "./pages/DeliveryOrders";
-import InternalTransfers from "./pages/InternalTransfers";
 import MovementPage from "./pages/MovementPage";
 import MoveHistory from "./pages/MoveHistory";
 import Settings from "./pages/Settings";
@@ -26,7 +25,7 @@ function App() {
     <BrowserRouter>
       <Routes>
 
-        {/* ================= DEFAULT ================= */}
+        {/* DEFAULT */}
         <Route
           path="/"
           element={
@@ -41,7 +40,7 @@ function App() {
           }
         />
 
-        {/* ================= AUTH ================= */}
+        {/* AUTH */}
         <Route
           path="/login"
           element={<Login />}
@@ -57,7 +56,7 @@ function App() {
           element={<ForgotPassword />}
         />
 
-        {/* ================= DASHBOARD ================= */}
+        {/* DASHBOARD */}
         <Route
           path="/dashboard"
           element={
@@ -67,7 +66,7 @@ function App() {
           }
         />
 
-        {/* ================= PRODUCTS ================= */}
+        {/* PRODUCTS */}
         <Route
           path="/products"
           element={
@@ -77,7 +76,7 @@ function App() {
           }
         />
 
-        {/* ================= RECEIPTS ================= */}
+        {/* RECEIPTS */}
         <Route
           path="/operations/receipts"
           element={
@@ -87,7 +86,7 @@ function App() {
           }
         />
 
-        {/* ================= DELIVERY ORDERS ================= */}
+        {/* DELIVERY ORDERS */}
         <Route
           path="/operations/deliveries"
           element={
@@ -97,29 +96,42 @@ function App() {
           }
         />
 
-        {/* ================= INTERNAL TRANSFERS ================= */}
+        {/* INTERNAL TRANSFERS */}
         <Route
           path="/operations/transfers"
           element={
             <ProtectedRoute>
-              <InternalTransfers />
+              <MovementPage
+                type="TRANSFER"
+                title="Internal Transfers"
+                description="Move stock between warehouses or locations."
+                icon="⇄"
+                quantityLabel="Quantity to Transfer"
+                referenceLabel="Reference"
+                showLocations
+              />
             </ProtectedRoute>
           }
         />
 
-        {/* ================= INVENTORY ADJUSTMENTS ================= */}
+        {/* INVENTORY ADJUSTMENTS */}
         <Route
           path="/operations/adjustments"
           element={
             <ProtectedRoute>
               <MovementPage
                 type="ADJUSTMENT"
+                title="Inventory Adjustments"
+                description="Reconcile recorded stock with the physical count."
+                icon="±"
+                quantityLabel="Counted Quantity"
+                referenceLabel="Reason for Adjustment"
               />
             </ProtectedRoute>
           }
         />
 
-        {/* ================= MOVE HISTORY ================= */}
+        {/* MOVE HISTORY */}
         <Route
           path="/operations/move-history"
           element={
@@ -129,7 +141,7 @@ function App() {
           }
         />
 
-        {/* ================= SETTINGS ================= */}
+        {/* SETTINGS */}
         <Route
           path="/settings"
           element={
@@ -139,7 +151,7 @@ function App() {
           }
         />
 
-        {/* ================= PROFILE ================= */}
+        {/* PROFILE */}
         <Route
           path="/profile"
           element={
@@ -149,7 +161,7 @@ function App() {
           }
         />
 
-        {/* ================= FALLBACK ================= */}
+        {/* FALLBACK */}
         <Route
           path="*"
           element={

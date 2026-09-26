@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import Shell from "../components/Shell";
 import { api } from "../api";
 
-function Icon({ name, size = 20 }) {
+function Icon({ name, size = 18 }) {
   const common = {
     width: size,
     height: size,
@@ -17,7 +16,7 @@ function Icon({ name, size = 20 }) {
   };
 
   const icons = {
-    products: (
+    box: (
       <svg {...common}>
         <path d="M3 7.5 12 3l9 4.5L12 12 3 7.5Z" />
         <path d="M3 7.5V17l9 4 9-4V7.5" />
@@ -25,60 +24,117 @@ function Icon({ name, size = 20 }) {
       </svg>
     ),
 
-    stock: (
+    trend: (
       <svg {...common}>
-        <path d="M4 6h16" />
-        <path d="M4 12h16" />
-        <path d="M4 18h16" />
+        <path d="M4 17 9 12l4 4 7-8" />
+        <path d="M15 8h5v5" />
       </svg>
     ),
 
-    low: (
+    warning: (
       <svg {...common}>
-        <path d="M12 4v10" />
-        <path d="M12 18h.01" />
-        <path d="M10 4h4" />
+        <path d="M12 4 21 20H3L12 4Z" />
+        <path d="M12 9v5" />
+        <path d="M12 17h.01" />
       </svg>
     ),
 
-    out: (
+    truck: (
       <svg {...common}>
-        <circle cx="12" cy="12" r="8.5" />
-        <path d="m9 9 6 6M15 9l-6 6" />
+        <path d="M3 6h11v11H3z" />
+        <path d="M14 10h4l3 3v4h-7z" />
+        <circle cx="7" cy="19" r="2" />
+        <circle cx="18" cy="19" r="2" />
       </svg>
     ),
 
     receipt: (
       <svg {...common}>
-        <path d="M5 3h14v18l-3-2-4 2-4-2-3 2V3Z" />
-        <path d="M8 8h8M8 12h8M8 16h5" />
-      </svg>
-    ),
-
-    delivery: (
-      <svg {...common}>
-        <path d="M3 6h11v11H3z" />
-        <path d="M14 10h4l3 3v4h-7" />
-        <circle cx="7" cy="18" r="2" />
-        <circle cx="18" cy="18" r="2" />
+        <path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3Z" />
+        <path d="M9 7h6" />
+        <path d="M9 11h6" />
+        <path d="M9 15h4" />
       </svg>
     ),
 
     transfer: (
       <svg {...common}>
-        <path d="M4 7h12" />
-        <path d="m13 4 3 3-3 3" />
-        <path d="M20 17H8" />
-        <path d="m11 14-3 3 3 3" />
+        <path d="M4 8h15" />
+        <path d="m15 4 4 4-4 4" />
+        <path d="M20 16H5" />
+        <path d="m9 12-4 4 4 4" />
       </svg>
     ),
 
     adjustment: (
       <svg {...common}>
-        <path d="M4 6h16M4 12h16M4 18h16" />
-        <circle cx="9" cy="6" r="2" />
-        <circle cx="15" cy="12" r="2" />
-        <circle cx="10" cy="18" r="2" />
+        <path d="M4 7h16" />
+        <path d="M4 12h16" />
+        <path d="M4 17h16" />
+        <circle
+          cx="9"
+          cy="7"
+          r="2"
+          fill="currentColor"
+          stroke="none"
+        />
+        <circle
+          cx="15"
+          cy="12"
+          r="2"
+          fill="currentColor"
+          stroke="none"
+        />
+        <circle
+          cx="11"
+          cy="17"
+          r="2"
+          fill="currentColor"
+          stroke="none"
+        />
+      </svg>
+    ),
+
+    refresh: (
+      <svg {...common}>
+        <path d="M20 11a8 8 0 0 0-14.8-4" />
+        <path d="M5 3v4h4" />
+        <path d="M4 13a8 8 0 0 0 14.8 4" />
+        <path d="M19 21v-4h-4" />
+      </svg>
+    ),
+
+    arrowRight: (
+      <svg {...common}>
+        <path d="M5 12h13" />
+        <path d="m13 6 6 6-6 6" />
+      </svg>
+    ),
+
+    plus: (
+      <svg {...common}>
+        <path d="M12 5v14" />
+        <path d="M5 12h14" />
+      </svg>
+    ),
+
+    check: (
+      <svg {...common}>
+        <path d="m5 12 4 4L19 6" />
+      </svg>
+    ),
+
+    warehouse: (
+      <svg {...common}>
+        <path d="M3 10 12 4l9 6" />
+        <path d="M5 9v11h14V9" />
+        <path d="M9 20v-6h6v6" />
+      </svg>
+    ),
+
+    activity: (
+      <svg {...common}>
+        <path d="M3 12h4l2-6 4 12 2-6h6" />
       </svg>
     ),
   };
@@ -86,349 +142,468 @@ function Icon({ name, size = 20 }) {
   return icons[name] || null;
 }
 
-export default function Dashboard() {
-  const [dashboard, setDashboard] = useState({
-    totalProducts: 0,
-    totalStock: 0,
-    lowStock: 0,
-    outOfStock: 0,
-    recentMovements: [],
-  });
+function AnimatedNumber({ value }) {
+  const target = Number(value || 0);
+  const [number, setNumber] = useState(0);
 
+  useEffect(() => {
+    let frame;
+    const startValue = 0;
+    const startTime = performance.now();
+    const duration = 650;
+
+    const animate = (time) => {
+      const progress = Math.min(
+        (time - startTime) / duration,
+        1
+      );
+
+      const eased =
+        1 - Math.pow(1 - progress, 3);
+
+      const current =
+        startValue +
+        (target - startValue) * eased;
+
+      setNumber(current);
+
+      if (progress < 1) {
+        frame = requestAnimationFrame(animate);
+      }
+    };
+
+    frame = requestAnimationFrame(animate);
+
+    return () => cancelAnimationFrame(frame);
+  }, [target]);
+
+  return Math.round(number).toLocaleString("en-IN");
+}
+
+export default function Dashboard() {
+  const [dashboard, setDashboard] = useState(null);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState("");
 
-  async function loadDashboard() {
-    setLoading(true);
+  async function loadDashboard(initial = false) {
+    if (initial) {
+      setLoading(true);
+    } else {
+      setRefreshing(true);
+    }
+
+    setError("");
 
     try {
-      const [
-        dashboardResult,
-        productsResult,
-      ] = await Promise.all([
-        api("/dashboard"),
-        api("/products"),
-      ]);
+      const [dashboardResult, productsResult] =
+        await Promise.all([
+          api("/dashboard"),
+          api("/products"),
+        ]);
 
-      if (dashboardResult.response.ok) {
-        setDashboard(dashboardResult.data);
+      if (!dashboardResult.response.ok) {
+        setError(
+          dashboardResult.data?.message ||
+            "Unable to load dashboard."
+        );
+        return;
       }
 
-      if (productsResult.response.ok) {
-        setProducts(productsResult.data);
+      if (!productsResult.response.ok) {
+        setError(
+          productsResult.data?.message ||
+            "Unable to load products."
+        );
+        return;
       }
+
+      setDashboard(dashboardResult.data);
+      setProducts(productsResult.data || []);
+    } catch {
+      setError(
+        "Unable to connect to the StockSense backend."
+      );
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }
 
   useEffect(() => {
-    loadDashboard();
+    loadDashboard(true);
   }, []);
-
-  const healthyProducts = Math.max(
-    0,
-    dashboard.totalProducts -
-      dashboard.lowStock -
-      dashboard.outOfStock
-  );
-
-  const healthPercent =
-    dashboard.totalProducts > 0
-      ? Math.round(
-          (healthyProducts /
-            dashboard.totalProducts) *
-            100
-        )
-      : 0;
 
   const attentionProducts = useMemo(() => {
     return products
-      .filter((product) => {
-        const stock = Number(product.stock || 0);
-        const min = Number(product.min_stock || 0);
-
-        return stock <= min;
-      })
+      .filter(
+        (product) =>
+          Number(product.stock || 0) <=
+          Number(product.min_stock || 0)
+      )
       .sort(
         (a, b) =>
-          Number(a.stock) -
-          Number(b.stock)
-      )
-      .slice(0, 5);
+          Number(a.stock || 0) -
+          Number(b.stock || 0)
+      );
   }, [products]);
 
-  const activity = useMemo(() => {
-    const value = {
-      RECEIPT: 0,
-      DELIVERY: 0,
-      TRANSFER: 0,
-      ADJUSTMENT: 0,
-    };
+  const healthyProducts = useMemo(() => {
+    return products.filter(
+      (product) =>
+        Number(product.stock || 0) >
+        Number(product.min_stock || 0)
+    ).length;
+  }, [products]);
 
-    dashboard.recentMovements.forEach(
-      (movement) => {
-        if (value[movement.type] !== undefined) {
-          value[movement.type]++;
-        }
-      }
-    );
+  const healthPercent =
+    products.length > 0
+      ? Math.round(
+          (healthyProducts / products.length) * 100
+        )
+      : 0;
 
-    return value;
-  }, [dashboard.recentMovements]);
+  const greeting = getGreeting();
 
   return (
     <Shell
       title="Dashboard"
-      subtitle="Inventory control center"
+      subtitle="Inventory overview and operational activity."
     >
-      <div className="dashboard-page">
+      <div className="dashboard-v2">
 
-        {/* TITLE */}
+        {/* HERO */}
 
-        <div className="dashboard-intro">
+        <section className="dashboard-v2-hero">
 
           <div>
-            <h2>Inventory Overview</h2>
+            <div className="dashboard-v2-kicker">
+              INVENTORY OPERATIONS
+            </div>
+
+            <h1>
+              {greeting},{" "}
+              <span>{getFirstName()}</span>
+            </h1>
 
             <p>
-              Monitor stock levels, operations and
-              inventory health from one workspace.
+              See what needs attention and manage
+              your inventory from one place.
             </p>
           </div>
 
-          <div className="dashboard-actions">
+          <button
+            className="dashboard-v2-refresh"
+            onClick={() =>
+              loadDashboard(false)
+            }
+            title="Refresh dashboard"
+          >
+            <Icon
+              name="refresh"
+              size={17}
+            />
+            {refreshing
+              ? "Refreshing..."
+              : "Refresh"}
+          </button>
 
-            <button
-              className="dashboard-refresh"
-              onClick={loadDashboard}
-            >
-              Refresh
-            </button>
+        </section>
 
-            <Link
-              to="/products"
-              className="dashboard-primary"
-            >
-              Add Product
-            </Link>
-
+        {error && (
+          <div className="dashboard-v2-error">
+            {error}
           </div>
-
-        </div>
+        )}
 
         {/* KPI */}
 
-        <div className="dashboard-kpi-grid">
+        <section className="dashboard-v2-kpis">
 
           <Kpi
-            title="Total Products"
-            value={dashboard.totalProducts}
-            description="Products tracked"
-            icon="products"
-            theme="red"
+            icon="box"
+            tone="neutral"
+            label="Total Products"
+            value={
+              dashboard?.totalProducts || 0
+            }
+            loading={loading}
           />
 
           <Kpi
-            title="Total Stock"
-            value={dashboard.totalStock}
-            description="Units available"
-            icon="stock"
-            theme="dark"
+            icon="trend"
+            tone="green"
+            label="Total Stock"
+            value={
+              dashboard?.totalStock || 0
+            }
+            loading={loading}
           />
 
           <Kpi
-            title="Low Stock"
-            value={dashboard.lowStock}
-            description="Requires attention"
-            icon="low"
-            theme="amber"
+            icon="warning"
+            tone="orange"
+            label="Needs Reorder"
+            value={
+              dashboard?.reorderRequired ||
+              dashboard?.lowStock ||
+              0
+            }
+            loading={loading}
           />
 
           <Kpi
-            title="Out of Stock"
-            value={dashboard.outOfStock}
-            description="Currently unavailable"
-            icon="out"
-            theme="danger"
+            icon="warning"
+            tone="red"
+            label="Out of Stock"
+            value={
+              dashboard?.outOfStock || 0
+            }
+            loading={loading}
           />
 
-        </div>
+        </section>
 
-        {/* OVERVIEW ROW */}
+        {/* QUICK ACTIONS */}
 
-        <div className="dashboard-grid-two">
+        <section className="dashboard-v2-section">
 
-          <section className="dashboard-panel">
+          <div className="dashboard-v2-section-heading">
 
-            <div className="dashboard-panel-header">
+            <div>
+              <h2>
+                Quick Actions
+              </h2>
+
+              <p>
+                Start the inventory operation you
+                need.
+              </p>
+            </div>
+
+          </div>
+
+          <div className="dashboard-v2-actions">
+
+            <QuickAction
+              href="/operations/receipts"
+              icon="receipt"
+              title="Receive Stock"
+              description="Record goods arriving from a supplier."
+            />
+
+            <QuickAction
+              href="/operations/deliveries"
+              icon="truck"
+              title="Create Delivery"
+              description="Ship stock to a customer or destination."
+            />
+
+            <QuickAction
+              href="/operations/transfers"
+              icon="transfer"
+              title="Transfer Stock"
+              description="Move inventory between locations."
+            />
+
+            <QuickAction
+              href="/operations/adjustments"
+              icon="adjustment"
+              title="Adjust Inventory"
+              description="Correct stock using a physical count."
+            />
+
+          </div>
+
+        </section>
+
+        {/* MAIN CONTENT */}
+
+        <section className="dashboard-v2-grid">
+
+          {/* STOCK HEALTH */}
+
+          <div className="dashboard-v2-panel">
+
+            <div className="dashboard-v2-panel-header">
 
               <div>
-                <h3>Inventory Health</h3>
+                <h2>
+                  Inventory Health
+                </h2>
 
                 <p>
-                  Product availability based on
-                  minimum stock thresholds.
+                  Current stock condition across
+                  your products.
                 </p>
               </div>
 
-              <div className="health-number">
+              <div className="dashboard-v2-health-number">
                 {healthPercent}%
               </div>
 
             </div>
 
-            <div className="health-track">
-              <div
-                className="health-fill"
-                style={{
-                  width: `${healthPercent}%`,
-                }}
-              />
+            <div className="dashboard-v2-health">
+
+              <div className="dashboard-v2-health-ring">
+                <div>
+                  <strong>
+                    {healthPercent}%
+                  </strong>
+
+                  <span>
+                    healthy
+                  </span>
+                </div>
+
+                <svg
+                  viewBox="0 0 100 100"
+                  className="dashboard-health-svg"
+                >
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="42"
+                    className="dashboard-health-track"
+                  />
+
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="42"
+                    className="dashboard-health-progress"
+                    style={{
+                      strokeDashoffset:
+                        264 -
+                        (264 *
+                          healthPercent) /
+                          100,
+                    }}
+                  />
+                </svg>
+
+              </div>
+
+              <div className="dashboard-v2-health-stats">
+
+                <HealthStat
+                  label="Healthy"
+                  value={healthyProducts}
+                  tone="healthy"
+                />
+
+                <HealthStat
+                  label="Needs Reorder"
+                  value={
+                    dashboard?.reorderRequired ||
+                    dashboard?.lowStock ||
+                    0
+                  }
+                  tone="warning"
+                />
+
+                <HealthStat
+                  label="Out of Stock"
+                  value={
+                    dashboard?.outOfStock || 0
+                  }
+                  tone="danger"
+                />
+
+              </div>
+
             </div>
 
-            <div className="health-breakdown">
+          </div>
 
-              <HealthBlock
-                label="Healthy"
-                value={healthyProducts}
-                tone="green"
-              />
+          {/* ATTENTION */}
 
-              <HealthBlock
-                label="Low Stock"
-                value={dashboard.lowStock}
-                tone="amber"
-              />
+          <div className="dashboard-v2-panel">
 
-              <HealthBlock
-                label="Out of Stock"
-                value={dashboard.outOfStock}
-                tone="red"
-              />
-
-            </div>
-
-          </section>
-
-          <section className="dashboard-panel">
-
-            <div className="dashboard-panel-header">
+            <div className="dashboard-v2-panel-header">
 
               <div>
-                <h3>Operations</h3>
+                <h2>
+                  Needs Attention
+                </h2>
 
                 <p>
-                  Recent activity by operation type.
+                  Products at or below their
+                  minimum stock.
                 </p>
               </div>
 
-              <Link
-                to="/operations/move-history"
-                className="dashboard-text-link"
-              >
-                View history
-              </Link>
-
-            </div>
-
-            <div className="operations-list">
-
-              <OperationRow
-                label="Receipts"
-                value={activity.RECEIPT}
-                icon="receipt"
-              />
-
-              <OperationRow
-                label="Delivery Orders"
-                value={activity.DELIVERY}
-                icon="delivery"
-              />
-
-              <OperationRow
-                label="Internal Transfers"
-                value={activity.TRANSFER}
-                icon="transfer"
-              />
-
-              <OperationRow
-                label="Adjustments"
-                value={activity.ADJUSTMENT}
-                icon="adjustment"
-              />
-
-            </div>
-
-          </section>
-
-        </div>
-
-        {/* ATTENTION + ACTIONS */}
-
-        <div className="dashboard-grid-two">
-
-          <section className="dashboard-panel">
-
-            <div className="dashboard-panel-header">
-
-              <div>
-                <h3>Stock Attention</h3>
-
-                <p>
-                  Products below their target stock level.
-                </p>
-              </div>
-
-              <Link
-                to="/products"
-                className="dashboard-text-link"
-              >
+              <a href="/products">
                 View products
-              </Link>
+                <Icon
+                  name="arrowRight"
+                  size={13}
+                />
+              </a>
 
             </div>
 
             {attentionProducts.length ===
             0 ? (
+              <div className="dashboard-v2-empty">
+                <div>
+                  <Icon
+                    name="check"
+                    size={19}
+                  />
+                </div>
 
-              <div className="dashboard-empty">
-                <strong>No stock issues</strong>
+                <strong>
+                  Inventory is healthy
+                </strong>
+
                 <span>
-                  All products are above their
-                  minimum thresholds.
+                  No products currently require
+                  replenishment.
                 </span>
               </div>
-
             ) : (
+              <div className="dashboard-v2-alert-list">
 
-              <div className="attention-list">
-
-                {attentionProducts.map(
-                  (product) => {
-
+                {attentionProducts
+                  .slice(0, 4)
+                  .map((product) => {
                     const stock =
-                      Number(product.stock || 0);
+                      Number(
+                        product.stock || 0
+                      );
 
-                    const min =
-                      Number(product.min_stock || 0);
+                    const minimum =
+                      Number(
+                        product.min_stock || 0
+                      );
 
-                    const isOut =
+                    const percentage =
+                      minimum > 0
+                        ? Math.min(
+                            100,
+                            (stock /
+                              minimum) *
+                              100
+                          )
+                        : 0;
+
+                    const out =
                       stock <= 0;
 
                     return (
                       <div
-                        className="attention-row"
+                        className="dashboard-v2-alert"
                         key={product.id}
                       >
 
-                        <div className="attention-product">
+                        <div className="dashboard-v2-alert-top">
 
-                          <div className="attention-avatar">
-                            {String(
-                              product.name
-                            )
-                              .charAt(0)
+                          <div className="dashboard-v2-product-icon">
+                            {product.name
+                              ?.charAt(0)
                               .toUpperCase()}
                           </div>
 
@@ -442,217 +617,190 @@ export default function Dashboard() {
                             </span>
                           </div>
 
+                          <em
+                            className={
+                              out
+                                ? "danger"
+                                : "warning"
+                            }
+                          >
+                            {out
+                              ? "Out"
+                              : "Low"}
+                          </em>
+
                         </div>
 
-                        <div className="attention-quantity">
+                        <div className="dashboard-v2-alert-values">
+
                           <strong>
-                            {stock}
+                            {stock}{" "}
+                            {product.uom}
                           </strong>
 
                           <span>
-                            / {min} minimum
+                            minimum{" "}
+                            {minimum}{" "}
+                            {product.uom}
                           </span>
+
                         </div>
 
-                        <span
-                          className={`attention-status ${
-                            isOut
-                              ? "danger"
-                              : "warning"
-                          }`}
-                        >
-                          {isOut
-                            ? "Out of stock"
-                            : "Low stock"}
-                        </span>
+                        <div className="dashboard-v2-alert-track">
+
+                          <div
+                            className={
+                              out
+                                ? "danger"
+                                : ""
+                            }
+                            style={{
+                              width: `${Math.max(
+                                percentage,
+                                out ? 2 : 4
+                              )}%`,
+                            }}
+                          />
+
+                        </div>
 
                       </div>
                     );
-                  }
-                )}
+                  })}
 
               </div>
-
             )}
 
-          </section>
+          </div>
 
-          <section className="dashboard-panel">
+        </section>
 
-            <div className="dashboard-panel-header">
+        {/* OPERATIONS */}
 
-              <div>
-                <h3>Quick Actions</h3>
+        <section className="dashboard-v2-section">
 
-                <p>
-                  Frequently used inventory operations.
-                </p>
-              </div>
-
-            </div>
-
-            <div className="quick-actions">
-
-              <QuickAction
-                title="Receive Stock"
-                description="Register incoming inventory"
-                path="/operations/receipts"
-                icon="receipt"
-              />
-
-              <QuickAction
-                title="Delivery Order"
-                description="Process outgoing inventory"
-                path="/operations/deliveries"
-                icon="delivery"
-              />
-
-              <QuickAction
-                title="Internal Transfer"
-                description="Move stock between locations"
-                path="/operations/transfers"
-                icon="transfer"
-              />
-
-              <QuickAction
-                title="Stock Adjustment"
-                description="Reconcile physical stock"
-                path="/operations/adjustments"
-                icon="adjustment"
-              />
-
-            </div>
-
-          </section>
-
-        </div>
-
-        {/* RECENT MOVEMENTS */}
-
-        <section className="dashboard-panel dashboard-recent">
-
-          <div className="dashboard-panel-header">
+          <div className="dashboard-v2-section-heading">
 
             <div>
-              <h3>Recent Movements</h3>
+              <h2>
+                Operations
+              </h2>
 
               <p>
-                Latest stock changes recorded in the system.
+                Documents currently moving through
+                your inventory workflow.
               </p>
             </div>
 
-            <Link
-              to="/operations/move-history"
-              className="dashboard-text-link"
+          </div>
+
+          <div className="dashboard-v2-operations">
+
+            <Operation
+              icon="receipt"
+              label="Pending Receipts"
+              value={
+                dashboard?.pendingReceipts || 0
+              }
+              href="/operations/receipts"
+            />
+
+            <Operation
+              icon="truck"
+              label="Pending Deliveries"
+              value={
+                dashboard?.pendingDeliveries || 0
+              }
+              href="/operations/deliveries"
+            />
+
+            <Operation
+              icon="transfer"
+              label="Scheduled Transfers"
+              value={
+                dashboard?.scheduledTransfers ||
+                0
+              }
+              href="/operations/transfers"
+            />
+
+            <Operation
+              icon="activity"
+              label="Movement History"
+              value={
+                dashboard?.recentMovements
+                  ?.length || 0
+              }
+              href="/operations/move-history"
+            />
+
+          </div>
+
+        </section>
+
+        {/* RECENT ACTIVITY */}
+
+        <section className="dashboard-v2-panel dashboard-v2-activity">
+
+          <div className="dashboard-v2-panel-header">
+
+            <div>
+              <h2>
+                Recent Activity
+              </h2>
+
+              <p>
+                Latest changes recorded in inventory.
+              </p>
+            </div>
+
+            <a
+              href="/operations/move-history"
             >
-              View all
-            </Link>
+              View history
+              <Icon
+                name="arrowRight"
+                size={13}
+              />
+            </a>
 
           </div>
 
           {loading ? (
-
-            <div className="dashboard-empty">
-              <span>
-                Loading inventory activity...
-              </span>
+            <div className="dashboard-v2-loading">
+              Loading activity...
             </div>
+          ) : dashboard?.recentMovements
+              ?.length ? (
+            <div className="dashboard-v2-activity-list">
 
-          ) : dashboard.recentMovements.length ===
-            0 ? (
+              {dashboard.recentMovements
+                .slice(0, 8)
+                .map((movement, index) => (
+                  <Activity
+                    key={movement.id}
+                    movement={movement}
+                    index={index}
+                  />
+                ))}
 
-            <div className="dashboard-empty">
-              <strong>No movements yet</strong>
-              <span>
-                Inventory transactions will appear
-                here.
-              </span>
             </div>
-
           ) : (
+            <div className="dashboard-v2-empty activity">
+              <Icon
+                name="activity"
+                size={20}
+              />
 
-            <div className="dashboard-table-wrap">
+              <strong>
+                No activity yet
+              </strong>
 
-              <table className="dashboard-table">
-
-                <thead>
-                  <tr>
-                    <th>PRODUCT</th>
-                    <th>SKU</th>
-                    <th>OPERATION</th>
-                    <th>QUANTITY</th>
-                    <th>REFERENCE</th>
-                    <th>DATE</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-
-                  {dashboard.recentMovements
-                    .slice(0, 8)
-                    .map((movement) => (
-
-                      <tr key={movement.id}>
-
-                        <td>
-                          <div className="movement-product">
-
-                            <div className="movement-avatar">
-                              {String(
-                                movement.product_name
-                              )
-                                .charAt(0)
-                                .toUpperCase()}
-                            </div>
-
-                            <strong>
-                              {movement.product_name}
-                            </strong>
-
-                          </div>
-                        </td>
-
-                        <td className="muted-cell">
-                          {movement.sku}
-                        </td>
-
-                        <td>
-                          <span
-                            className={`operation-badge ${String(
-                              movement.type
-                            ).toLowerCase()}`}
-                          >
-                            {movement.type}
-                          </span>
-                        </td>
-
-                        <td>
-                          <strong>
-                            {movement.quantity}
-                          </strong>
-                        </td>
-
-                        <td className="muted-cell">
-                          {movement.reference ||
-                            "No reference"}
-                        </td>
-
-                        <td className="muted-cell">
-                          {new Date(
-                            movement.created_at
-                          ).toLocaleDateString()}
-                        </td>
-
-                      </tr>
-
-                    ))}
-
-                </tbody>
-
-              </table>
-
+              <span>
+                Inventory movements will appear
+                here as operations are completed.
+              </span>
             </div>
-
           )}
 
         </section>
@@ -663,112 +811,295 @@ export default function Dashboard() {
 }
 
 function Kpi({
-  title,
-  value,
-  description,
   icon,
-  theme,
+  tone,
+  label,
+  value,
+  loading,
 }) {
   return (
-    <div className="dashboard-kpi">
+    <div className="dashboard-v2-kpi">
 
       <div
-        className={`kpi-icon ${theme}`}
+        className={`dashboard-v2-kpi-icon ${tone}`}
       >
         <Icon
           name={icon}
-          size={21}
+          size={20}
         />
       </div>
-
-      <div className="kpi-content">
-
-        <span>{title}</span>
-
-        <strong>{value}</strong>
-
-        <small>
-          {description}
-        </small>
-
-      </div>
-
-    </div>
-  );
-}
-
-function HealthBlock({
-  label,
-  value,
-  tone,
-}) {
-  return (
-    <div className="health-block">
-
-      <span
-        className={`health-marker ${tone}`}
-      />
 
       <div>
-        <strong>{value}</strong>
-        <span>{label}</span>
+        <span>
+          {label}
+        </span>
+
+        {loading ? (
+          <div className="dashboard-v2-skeleton" />
+        ) : (
+          <strong>
+            <AnimatedNumber
+              value={value}
+            />
+          </strong>
+        )}
       </div>
-
-    </div>
-  );
-}
-
-function OperationRow({
-  label,
-  value,
-  icon,
-}) {
-  return (
-    <div className="operation-row">
-
-      <div className="operation-icon">
-        <Icon
-          name={icon}
-          size={17}
-        />
-      </div>
-
-      <span>{label}</span>
-
-      <strong>{value}</strong>
 
     </div>
   );
 }
 
 function QuickAction({
+  href,
+  icon,
   title,
   description,
-  path,
-  icon,
 }) {
   return (
-    <Link
-      to={path}
-      className="quick-action"
+    <a
+      href={href}
+      className="dashboard-v2-action"
+    >
+      <div className="dashboard-v2-action-icon">
+        <Icon
+          name={icon}
+          size={18}
+        />
+      </div>
+
+      <div>
+        <strong>
+          {title}
+        </strong>
+
+        <span>
+          {description}
+        </span>
+      </div>
+
+      <Icon
+        name="arrowRight"
+        size={15}
+      />
+    </a>
+  );
+}
+
+function HealthStat({
+  label,
+  value,
+  tone,
+}) {
+  return (
+    <div className="dashboard-v2-health-stat">
+
+      <div
+        className={`dashboard-v2-health-dot ${tone}`}
+      />
+
+      <span>
+        {label}
+      </span>
+
+      <strong>
+        {value}
+      </strong>
+
+    </div>
+  );
+}
+
+function Operation({
+  icon,
+  label,
+  value,
+  href,
+}) {
+  return (
+    <a
+      href={href}
+      className="dashboard-v2-operation"
     >
 
-      <div className="quick-action-icon">
+      <div className="dashboard-v2-operation-icon">
         <Icon
           name={icon}
           size={17}
         />
       </div>
 
-      <div className="quick-action-text">
-        <strong>{title}</strong>
-        <span>{description}</span>
+      <div>
+        <span>
+          {label}
+        </span>
+
+        <strong>
+          {value}
+        </strong>
       </div>
 
-      <span className="quick-action-arrow">
-        →
-      </span>
+      <Icon
+        name="arrowRight"
+        size={14}
+      />
 
-    </Link>
+    </a>
+  );
+}
+
+function Activity({
+  movement,
+  index,
+}) {
+  const config = {
+    RECEIPT: {
+      icon: "receipt",
+      title: "Receipt",
+      className: "receipt",
+      prefix: "+",
+    },
+
+    DELIVERY: {
+      icon: "truck",
+      title: "Delivery",
+      className: "delivery",
+      prefix: "-",
+    },
+
+    TRANSFER: {
+      icon: "transfer",
+      title: "Internal Transfer",
+      className: "transfer",
+      prefix: "",
+    },
+
+    ADJUSTMENT: {
+      icon: "adjustment",
+      title: "Inventory Adjustment",
+      className: "adjustment",
+      prefix: "",
+    },
+  };
+
+  const current =
+    config[movement.type] ||
+    config.ADJUSTMENT;
+
+  return (
+    <div
+      className="dashboard-v2-activity-row"
+      style={{
+        animationDelay: `${index * 60}ms`,
+      }}
+    >
+
+      <div
+        className={`dashboard-v2-activity-icon ${current.className}`}
+      >
+        <Icon
+          name={current.icon}
+          size={16}
+        />
+      </div>
+
+      <div className="dashboard-v2-activity-main">
+
+        <strong>
+          {current.title}
+        </strong>
+
+        <span>
+          {movement.product_name}
+          {" · "}
+          {movement.reference ||
+            "No reference"}
+        </span>
+
+      </div>
+
+      <div className="dashboard-v2-activity-quantity">
+
+        <strong
+          className={current.className}
+        >
+          {current.prefix}
+          {movement.quantity}
+          {" "}
+          {movement.uom || ""}
+        </strong>
+
+        <span>
+          {movement.from_location &&
+          movement.to_location
+            ? `${movement.from_location} → ${movement.to_location}`
+            : formatDate(
+                movement.created_at
+              )}
+        </span>
+
+      </div>
+
+    </div>
+  );
+}
+
+function getGreeting() {
+  const hour =
+    new Date().getHours();
+
+  if (hour < 12) {
+    return "Good morning";
+  }
+
+  if (hour < 17) {
+    return "Good afternoon";
+  }
+
+  return "Good evening";
+}
+
+function getFirstName() {
+  try {
+    const user =
+      JSON.parse(
+        localStorage.getItem(
+          "stocksenseUser"
+        ) || "null"
+      );
+
+    return (
+      user?.name
+        ?.split(" ")
+        ?.at(0) ||
+      "there"
+    );
+  } catch {
+    return "there";
+  }
+}
+
+function formatDate(value) {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(
+    value.replace(" ", "T") + "Z"
+  );
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return value;
+  }
+
+  return date.toLocaleDateString(
+    "en-IN",
+    {
+      day: "2-digit",
+      month: "short",
+    }
   );
 }
