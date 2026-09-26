@@ -3,6 +3,7 @@ import cors from "cors";
 import { DatabaseSync } from "node:sqlite";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import crypto from "node:crypto";
 
 const app = express();
 
@@ -13,11 +14,13 @@ const JWT_SECRET =
 app.use(cors());
 app.use(express.json());
 
+const db = new DatabaseSync("stocksense.db");
+
+db.exec(`PRAGMA foreign_keys = ON;`);
+
 // =====================================================
 // DATABASE
 // =====================================================
-
-const db = new DatabaseSync("stocksense.db");
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
@@ -37,7 +40,7 @@ db.exec(`
     stock REAL NOT NULL DEFAULT 0,
     min_stock REAL NOT NULL DEFAULT 0,
     reorder_qty REAL NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
   CREATE TABLE IF NOT EXISTS movements (
@@ -51,13 +54,44 @@ db.exec(`
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(product_id) REFERENCES products(id)
   );
+
+  CREATE TABLE IF NOT EXISTS password_otps (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT NOT NULL,
+    otp_hash TEXT NOT NULL,
+    expires_at INTEGER NOT NULL,
+    used INTEGER NOT NULL DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS receipts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    receipt_no TEXT UNIQUE NOT NULL,
+    supplier TEXT NOT NULL,
+    warehouse TEXT NOT NULL,
+    reference TEXT,
+    status TEXT NOT NULL DEFAULT 'DRAFT',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    validated_at DATETIME
+  );
+
+  CREATE TABLE IF NOT EXISTS receipt_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    receipt_id INTEGER NOT NULL,
+    product_id INTEGER NOT NULL,
+    quantity REAL NOT NULL,
+    uom TEXT NOT NULL,
+    FOREIGN KEY(receipt_id)
+      REFERENCES receipts(id)
+      ON DELETE CASCADE,
+    FOREIGN KEY(product_id)
+      REFERENCES products(id)
+  );
 `);
 
 // =====================================================
 // DATABASE MIGRATION
 // =====================================================
-// Your database already exists, so this makes sure the
-// reorder_qty column is added to older databases too.
 
 try {
   db.prepare(`
@@ -69,9 +103,43 @@ try {
 
   if (!message.includes("duplicate column name")) {
     console.error(
-      "Unable to add reorder_qty column:",
+      "reorder_qty migration error:",
       error
     );
+  }
+}
+
+// =====================================================
+// AUTH MIDDLEWARE
+// =====================================================
+
+function authenticate(req, res, next) {
+  const authHeader =
+    req.headers.authorization || "";
+
+  const token = authHeader.startsWith("Bearer ")
+    ? authHeader.substring(7)
+    : null;
+
+  if (!token) {
+    return res.status(401).json({
+      success: false,
+      message: "Authentication required",
+    });
+  }
+
+  try {
+    req.user = jwt.verify(
+      token,
+      JWT_SECRET
+    );
+
+    next();
+  } catch {
+    return res.status(401).json({
+      success: false,
+      message: "Invalid or expired token",
+    });
   }
 }
 
@@ -87,7 +155,7 @@ app.get("/api/health", (req, res) => {
 });
 
 // =====================================================
-// AUTH - SIGNUP
+// SIGNUP
 // =====================================================
 
 app.post("/api/auth/signup", (req, res) => {
@@ -113,6 +181,9 @@ app.post("/api/auth/signup", (req, res) => {
     });
   }
 
+  const normalizedEmail =
+    email.trim().toLowerCase();
+
   try {
     const passwordHash =
       bcrypt.hashSync(password, 10);
@@ -129,14 +200,14 @@ app.post("/api/auth/signup", (req, res) => {
       `)
       .run(
         name.trim(),
-        email.trim().toLowerCase(),
+        normalizedEmail,
         passwordHash
       );
 
     const user = {
       id: Number(result.lastInsertRowid),
       name: name.trim(),
-      email: email.trim().toLowerCase(),
+      email: normalizedEmail,
     };
 
     const token = jwt.sign(
@@ -152,7 +223,7 @@ app.post("/api/auth/signup", (req, res) => {
       token,
       user,
     });
-  } catch (error) {
+  } catch {
     res.status(400).json({
       success: false,
       message:
@@ -162,7 +233,7 @@ app.post("/api/auth/signup", (req, res) => {
 });
 
 // =====================================================
-// AUTH - LOGIN
+// LOGIN
 // =====================================================
 
 app.post("/api/auth/login", (req, res) => {
@@ -180,10 +251,14 @@ app.post("/api/auth/login", (req, res) => {
   }
 
   const record = db
-    .prepare(
-      "SELECT * FROM users WHERE email = ?"
-    )
-    .get(email.trim().toLowerCase());
+    .prepare(`
+      SELECT *
+      FROM users
+      WHERE email = ?
+    `)
+    .get(
+      email.trim().toLowerCase()
+    );
 
   if (
     !record ||
@@ -221,42 +296,183 @@ app.post("/api/auth/login", (req, res) => {
 });
 
 // =====================================================
-// AUTH MIDDLEWARE
+// FORGOT PASSWORD
 // =====================================================
 
-function authenticate(req, res, next) {
-  const authHeader =
-    req.headers.authorization || "";
+app.post(
+  "/api/auth/forgot-password",
+  (req, res) => {
+    const { email } = req.body;
 
-  const token = authHeader.startsWith(
-    "Bearer "
-  )
-    ? authHeader.substring(7)
-    : null;
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required",
+      });
+    }
 
-  if (!token) {
-    return res.status(401).json({
-      success: false,
-      message: "Authentication required",
-    });
-  }
+    const normalizedEmail =
+      email.trim().toLowerCase();
 
-  try {
-    const decoded = jwt.verify(
-      token,
-      JWT_SECRET
+    const user = db
+      .prepare(`
+        SELECT id
+        FROM users
+        WHERE email = ?
+      `)
+      .get(normalizedEmail);
+
+    if (!user) {
+      return res.json({
+        success: true,
+        message:
+          "If the account exists, an OTP has been generated.",
+      });
+    }
+
+    const otp = String(
+      crypto.randomInt(
+        100000,
+        999999
+      )
     );
 
-    req.user = decoded;
+    const otpHash =
+      bcrypt.hashSync(otp, 10);
 
-    next();
-  } catch {
-    return res.status(401).json({
-      success: false,
-      message: "Invalid or expired token",
+    db.prepare(`
+      INSERT INTO password_otps
+      (
+        email,
+        otp_hash,
+        expires_at
+      )
+      VALUES (?, ?, ?)
+    `).run(
+      normalizedEmail,
+      otpHash,
+      Date.now() + 10 * 60 * 1000
+    );
+
+    console.log(
+      `Password reset OTP for ${normalizedEmail}: ${otp}`
+    );
+
+    res.json({
+      success: true,
+      message: "OTP generated successfully",
+      devOtp: otp,
     });
   }
-}
+);
+
+// =====================================================
+// RESET PASSWORD
+// =====================================================
+
+app.post(
+  "/api/auth/reset-password",
+  (req, res) => {
+    const {
+      email,
+      otp,
+      newPassword,
+    } = req.body;
+
+    if (
+      !email ||
+      !otp ||
+      !newPassword
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Email, OTP and new password are required",
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Password must be at least 6 characters",
+      });
+    }
+
+    const normalizedEmail =
+      email.trim().toLowerCase();
+
+    const record = db
+      .prepare(`
+        SELECT *
+        FROM password_otps
+        WHERE email = ?
+          AND used = 0
+        ORDER BY id DESC
+        LIMIT 1
+      `)
+      .get(normalizedEmail);
+
+    if (!record) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid or expired OTP",
+      });
+    }
+
+    if (
+      record.expires_at < Date.now()
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "OTP has expired",
+      });
+    }
+
+    const validOtp =
+      bcrypt.compareSync(
+        String(otp),
+        record.otp_hash
+      );
+
+    if (!validOtp) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid OTP",
+      });
+    }
+
+    const passwordHash =
+      bcrypt.hashSync(
+        newPassword,
+        10
+      );
+
+    db.prepare(`
+      UPDATE users
+      SET password_hash = ?
+      WHERE email = ?
+    `).run(
+      passwordHash,
+      normalizedEmail
+    );
+
+    db.prepare(`
+      UPDATE password_otps
+      SET used = 1
+      WHERE id = ?
+    `).run(record.id);
+
+    res.json({
+      success: true,
+      message:
+        "Password reset successfully",
+    });
+  }
+);
 
 // =====================================================
 // CURRENT USER
@@ -290,31 +506,44 @@ app.get(
 );
 
 // =====================================================
-// PRODUCTS - GET ALL
+// PRODUCTS - GET
 // =====================================================
 
 app.get(
   "/api/products",
   authenticate,
   (req, res) => {
-    const products = db
-      .prepare(`
-        SELECT
-          id,
-          name,
-          sku,
-          category,
-          uom,
-          stock,
-          min_stock,
-          reorder_qty,
-          created_at
-        FROM products
-        ORDER BY id DESC
-      `)
-      .all();
+    try {
+      const products = db
+        .prepare(`
+          SELECT
+            id,
+            name,
+            sku,
+            category,
+            uom,
+            stock,
+            min_stock,
+            reorder_qty,
+            created_at
+          FROM products
+          ORDER BY id DESC
+        `)
+        .all();
 
-    res.json(products);
+      res.json(products);
+    } catch (error) {
+      console.error(
+        "Get products error:",
+        error
+      );
+
+      res.status(500).json({
+        success: false,
+        message:
+          "Unable to load products",
+      });
+    }
   }
 );
 
@@ -336,10 +565,6 @@ app.post(
       reorder_qty = 0,
     } = req.body;
 
-    // -----------------------------------------------
-    // REQUIRED FIELDS
-    // -----------------------------------------------
-
     if (
       !name ||
       !sku ||
@@ -353,10 +578,6 @@ app.post(
       });
     }
 
-    // -----------------------------------------------
-    // NORMALIZE NUMBERS
-    // -----------------------------------------------
-
     const initialStock =
       Number(stock);
 
@@ -366,14 +587,10 @@ app.post(
     const reorderQuantity =
       Number(reorder_qty);
 
-    // -----------------------------------------------
-    // VALIDATE NUMBERS
-    // -----------------------------------------------
-
     if (
-      Number.isNaN(initialStock) ||
-      Number.isNaN(minimumStock) ||
-      Number.isNaN(reorderQuantity)
+      !Number.isFinite(initialStock) ||
+      !Number.isFinite(minimumStock) ||
+      !Number.isFinite(reorderQuantity)
     ) {
       return res.status(400).json({
         success: false,
@@ -393,21 +610,6 @@ app.post(
           "Stock values cannot be negative",
       });
     }
-
-    if (
-      reorderQuantity > 0 &&
-      minimumStock <= 0
-    ) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Minimum stock must be greater than zero when a reorder quantity is set",
-      });
-    }
-
-    // -----------------------------------------------
-    // CREATE PRODUCT
-    // -----------------------------------------------
 
     try {
       const result = db
@@ -471,12 +673,501 @@ app.post(
         error
       );
 
-      return res.status(500).json({
+      res.status(500).json({
         success: false,
         message:
           "Unable to create product",
       });
     }
+  }
+);
+
+// =====================================================
+// RECEIPTS - GET ALL
+// =====================================================
+
+app.get(
+  "/api/receipts",
+  authenticate,
+  (req, res) => {
+    try {
+      const receipts = db
+        .prepare(`
+          SELECT
+            r.*,
+            COUNT(ri.id) AS item_count,
+            COALESCE(
+              SUM(ri.quantity),
+              0
+            ) AS total_quantity
+          FROM receipts r
+          LEFT JOIN receipt_items ri
+            ON ri.receipt_id = r.id
+          GROUP BY r.id
+          ORDER BY r.id DESC
+        `)
+        .all();
+
+      res.json(receipts);
+    } catch (error) {
+      console.error(
+        "Get receipts error:",
+        error
+      );
+
+      res.status(500).json({
+        success: false,
+        message:
+          "Unable to load receipts",
+      });
+    }
+  }
+);
+
+// =====================================================
+// RECEIPTS - GET ONE
+// =====================================================
+
+app.get(
+  "/api/receipts/:id",
+  authenticate,
+  (req, res) => {
+    try {
+      const receiptId =
+        Number(req.params.id);
+
+      const receipt = db
+        .prepare(`
+          SELECT *
+          FROM receipts
+          WHERE id = ?
+        `)
+        .get(receiptId);
+
+      if (!receipt) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Receipt not found",
+        });
+      }
+
+      const items = db
+        .prepare(`
+          SELECT
+            ri.*,
+            p.name AS product_name,
+            p.sku,
+            p.category
+          FROM receipt_items ri
+          JOIN products p
+            ON p.id = ri.product_id
+          WHERE ri.receipt_id = ?
+          ORDER BY ri.id
+        `)
+        .all(receiptId);
+
+      res.json({
+        success: true,
+        receipt,
+        items,
+      });
+    } catch (error) {
+      console.error(
+        "Get receipt error:",
+        error
+      );
+
+      res.status(500).json({
+        success: false,
+        message:
+          "Unable to load receipt",
+      });
+    }
+  }
+);
+
+// =====================================================
+// RECEIPTS - CREATE DRAFT
+// =====================================================
+
+app.post(
+  "/api/receipts",
+  authenticate,
+  (req, res) => {
+    const {
+      supplier,
+      warehouse,
+      reference = null,
+      items,
+    } = req.body;
+
+    if (
+      !supplier ||
+      !warehouse
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Supplier and warehouse/location are required",
+      });
+    }
+
+    if (
+      !Array.isArray(items) ||
+      items.length === 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "At least one product is required",
+      });
+    }
+
+    const seenProducts =
+      new Set();
+
+    for (const item of items) {
+      const productId =
+        Number(item.productId);
+
+      const quantity =
+        Number(item.quantity);
+
+      if (
+        !Number.isInteger(productId) ||
+        productId <= 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Every receipt line must have a valid product",
+        });
+      }
+
+      if (
+        !Number.isFinite(quantity) ||
+        quantity <= 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Every receipt quantity must be greater than zero",
+        });
+      }
+
+      if (
+        seenProducts.has(productId)
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "A product can only appear once in a receipt",
+        });
+      }
+
+      seenProducts.add(productId);
+
+      const product = db
+        .prepare(`
+          SELECT id, uom
+          FROM products
+          WHERE id = ?
+        `)
+        .get(productId);
+
+      if (!product) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "One of the selected products was not found",
+        });
+      }
+    }
+
+    const receiptNo =
+      `RCV-${new Date()
+        .toISOString()
+        .slice(0, 10)
+        .replace(/-/g, "")}-${Date.now()
+        .toString()
+        .slice(-6)}`;
+
+    try {
+      db.exec("BEGIN");
+
+      const receiptResult =
+        db.prepare(`
+          INSERT INTO receipts
+          (
+            receipt_no,
+            supplier,
+            warehouse,
+            reference,
+            status
+          )
+          VALUES (?, ?, ?, ?, 'DRAFT')
+        `).run(
+          receiptNo,
+          supplier.trim(),
+          warehouse.trim(),
+          reference?.trim() || null
+        );
+
+      const receiptId =
+        Number(
+          receiptResult.lastInsertRowid
+        );
+
+      const insertItem =
+        db.prepare(`
+          INSERT INTO receipt_items
+          (
+            receipt_id,
+            product_id,
+            quantity,
+            uom
+          )
+          SELECT
+            ?,
+            id,
+            ?,
+            uom
+          FROM products
+          WHERE id = ?
+        `);
+
+      for (const item of items) {
+        insertItem.run(
+          receiptId,
+          Number(item.quantity),
+          Number(item.productId)
+        );
+      }
+
+      db.exec("COMMIT");
+
+      const receipt =
+        db.prepare(`
+          SELECT
+            r.*,
+            COUNT(ri.id) AS item_count,
+            COALESCE(
+              SUM(ri.quantity),
+              0
+            ) AS total_quantity
+          FROM receipts r
+          LEFT JOIN receipt_items ri
+            ON ri.receipt_id = r.id
+          WHERE r.id = ?
+          GROUP BY r.id
+        `).get(receiptId);
+
+      res.status(201).json({
+        success: true,
+        message:
+          "Draft receipt created",
+        receipt,
+      });
+    } catch (error) {
+      try {
+        db.exec("ROLLBACK");
+      } catch {}
+
+      console.error(
+        "Create receipt error:",
+        error
+      );
+
+      res.status(500).json({
+        success: false,
+        message:
+          "Unable to create receipt",
+      });
+    }
+  }
+);
+
+// =====================================================
+// RECEIPTS - VALIDATE
+// =====================================================
+
+app.post(
+  "/api/receipts/:id/validate",
+  authenticate,
+  (req, res) => {
+    const receiptId =
+      Number(req.params.id);
+
+    const receipt = db
+      .prepare(`
+        SELECT *
+        FROM receipts
+        WHERE id = ?
+      `)
+      .get(receiptId);
+
+    if (!receipt) {
+      return res.status(404).json({
+        success: false,
+        message:
+          "Receipt not found",
+      });
+    }
+
+    if (
+      receipt.status !== "DRAFT"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Only draft receipts can be validated",
+      });
+    }
+
+    const items = db
+      .prepare(`
+        SELECT
+          ri.*,
+          p.name AS product_name
+        FROM receipt_items ri
+        JOIN products p
+          ON p.id = ri.product_id
+        WHERE ri.receipt_id = ?
+        ORDER BY ri.id
+      `)
+      .all(receiptId);
+
+    if (items.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "This receipt has no product lines",
+      });
+    }
+
+    try {
+      db.exec("BEGIN");
+
+      const updateProduct =
+        db.prepare(`
+          UPDATE products
+          SET stock = stock + ?
+          WHERE id = ?
+        `);
+
+      const insertMovement =
+        db.prepare(`
+          INSERT INTO movements
+          (
+            product_id,
+            type,
+            quantity,
+            from_location,
+            to_location,
+            reference
+          )
+          VALUES (?, 'RECEIPT', ?, NULL, ?, ?)
+        `);
+
+      for (const item of items) {
+        updateProduct.run(
+          Number(item.quantity),
+          Number(item.product_id)
+        );
+
+        insertMovement.run(
+          Number(item.product_id),
+          Number(item.quantity),
+          receipt.warehouse,
+          receipt.receipt_no
+        );
+      }
+
+      db.prepare(`
+        UPDATE receipts
+        SET
+          status = 'VALIDATED',
+          validated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(receiptId);
+
+      db.exec("COMMIT");
+
+      res.json({
+        success: true,
+        message:
+          "Receipt validated and stock updated",
+      });
+    } catch (error) {
+      try {
+        db.exec("ROLLBACK");
+      } catch {}
+
+      console.error(
+        "Validate receipt error:",
+        error
+      );
+
+      res.status(500).json({
+        success: false,
+        message:
+          "Unable to validate receipt",
+      });
+    }
+  }
+);
+
+// =====================================================
+// RECEIPTS - CANCEL
+// =====================================================
+
+app.post(
+  "/api/receipts/:id/cancel",
+  authenticate,
+  (req, res) => {
+    const receiptId =
+      Number(req.params.id);
+
+    const receipt = db
+      .prepare(`
+        SELECT
+          id,
+          status
+        FROM receipts
+        WHERE id = ?
+      `)
+      .get(receiptId);
+
+    if (!receipt) {
+      return res.status(404).json({
+        success: false,
+        message:
+          "Receipt not found",
+      });
+    }
+
+    if (
+      receipt.status !== "DRAFT"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Only draft receipts can be canceled",
+      });
+    }
+
+    db.prepare(`
+      UPDATE receipts
+      SET status = 'CANCELED'
+      WHERE id = ?
+    `).run(receiptId);
+
+    res.json({
+      success: true,
+      message:
+        "Receipt canceled",
+    });
   }
 );
 
@@ -488,75 +1179,93 @@ app.get(
   "/api/dashboard",
   authenticate,
   (req, res) => {
-    const totalProducts = db
-      .prepare(`
-        SELECT COUNT(*) AS count
-        FROM products
-      `)
-      .get().count;
+    try {
+      const totalProducts =
+        db.prepare(`
+          SELECT COUNT(*) AS count
+          FROM products
+        `).get().count;
 
-    const totalStock = db
-      .prepare(`
-        SELECT
-          COALESCE(
-            SUM(stock),
-            0
-          ) AS total
-        FROM products
-      `)
-      .get().total;
+      const totalStock =
+        db.prepare(`
+          SELECT
+            COALESCE(
+              SUM(stock),
+              0
+            ) AS total
+          FROM products
+        `).get().total;
 
-    const lowStock = db
-      .prepare(`
-        SELECT COUNT(*) AS count
-        FROM products
-        WHERE
-          stock > 0
-          AND stock <= min_stock
-      `)
-      .get().count;
+      const lowStock =
+        db.prepare(`
+          SELECT COUNT(*) AS count
+          FROM products
+          WHERE
+            stock > 0
+            AND stock <= min_stock
+        `).get().count;
 
-    const outOfStock = db
-      .prepare(`
-        SELECT COUNT(*) AS count
-        FROM products
-        WHERE stock <= 0
-      `)
-      .get().count;
+      const outOfStock =
+        db.prepare(`
+          SELECT COUNT(*) AS count
+          FROM products
+          WHERE stock <= 0
+        `).get().count;
 
-    const reorderRequired = db
-      .prepare(`
-        SELECT COUNT(*) AS count
-        FROM products
-        WHERE
-          stock <= min_stock
-          AND reorder_qty > 0
-      `)
-      .get().count;
+      const reorderRequired =
+        db.prepare(`
+          SELECT COUNT(*) AS count
+          FROM products
+          WHERE
+            stock <= min_stock
+            AND reorder_qty > 0
+        `).get().count;
 
-    const recentMovements = db
-      .prepare(`
-        SELECT
-          movements.*,
-          products.name AS product_name,
-          products.sku,
-          products.uom
-        FROM movements
-        JOIN products
-          ON products.id = movements.product_id
-        ORDER BY movements.id DESC
-        LIMIT 10
-      `)
-      .all();
+      const pendingReceipts =
+        db.prepare(`
+          SELECT COUNT(*) AS count
+          FROM receipts
+          WHERE status = 'DRAFT'
+        `).get().count;
 
-    res.json({
-      totalProducts,
-      totalStock,
-      lowStock,
-      outOfStock,
-      reorderRequired,
-      recentMovements,
-    });
+      const recentMovements =
+        db.prepare(`
+          SELECT
+            movements.*,
+            products.name AS product_name,
+            products.sku,
+            products.uom
+          FROM movements
+          JOIN products
+            ON products.id =
+               movements.product_id
+          ORDER BY movements.id DESC
+          LIMIT 10
+        `).all();
+
+      res.json({
+        totalProducts,
+        totalStock,
+        lowStock,
+        outOfStock,
+        reorderRequired,
+        pendingReceipts,
+        pendingDeliveries: 0,
+        scheduledTransfers: 0,
+        recentMovements,
+      });
+    } catch (error) {
+      console.error(
+        "Dashboard error:",
+        error
+      );
+
+      res.status(500).json({
+        success: false,
+        message:
+          "Unable to load dashboard",
+      });
+    }
   }
 );
 
@@ -577,10 +1286,6 @@ app.post(
       reference = null,
     } = req.body;
 
-    // -----------------------------------------------
-    // PRODUCT
-    // -----------------------------------------------
-
     const product = db
       .prepare(`
         SELECT *
@@ -597,14 +1302,11 @@ app.post(
       });
     }
 
-    // -----------------------------------------------
-    // QUANTITY
-    // -----------------------------------------------
-
-    const qty = Number(quantity);
+    const qty =
+      Number(quantity);
 
     if (
-      Number.isNaN(qty) ||
+      !Number.isFinite(qty) ||
       qty < 0
     ) {
       return res.status(400).json({
@@ -625,43 +1327,31 @@ app.post(
       });
     }
 
-    // -----------------------------------------------
-    // CALCULATE NEW STOCK
-    // -----------------------------------------------
-
     let newStock =
       Number(product.stock);
 
     if (type === "RECEIPT") {
       newStock += qty;
-    }
-
-    else if (type === "DELIVERY") {
+    } else if (
+      type === "DELIVERY"
+    ) {
       newStock -= qty;
-    }
-
-    else if (type === "ADJUSTMENT") {
+    } else if (
+      type === "ADJUSTMENT"
+    ) {
       newStock = qty;
-    }
-
-    else if (type === "TRANSFER") {
-      // Total stock does not change.
-      newStock = Number(
-        product.stock
-      );
-    }
-
-    else {
+    } else if (
+      type === "TRANSFER"
+    ) {
+      newStock =
+        Number(product.stock);
+    } else {
       return res.status(400).json({
         success: false,
         message:
           "Invalid movement type",
       });
     }
-
-    // -----------------------------------------------
-    // PREVENT NEGATIVE STOCK
-    // -----------------------------------------------
 
     if (newStock < 0) {
       return res.status(400).json({
@@ -671,18 +1361,18 @@ app.post(
       });
     }
 
-    // -----------------------------------------------
-    // PREPARE SQL
-    // -----------------------------------------------
+    try {
+      db.exec("BEGIN");
 
-    const updateProduct =
       db.prepare(`
         UPDATE products
         SET stock = ?
         WHERE id = ?
-      `);
+      `).run(
+        newStock,
+        productId
+      );
 
-    const insertMovement =
       db.prepare(`
         INSERT INTO movements
         (
@@ -694,21 +1384,7 @@ app.post(
           reference
         )
         VALUES (?, ?, ?, ?, ?, ?)
-      `);
-
-    // -----------------------------------------------
-    // TRANSACTION
-    // -----------------------------------------------
-
-    try {
-      db.exec("BEGIN");
-
-      updateProduct.run(
-        newStock,
-        productId
-      );
-
-      insertMovement.run(
+      `).run(
         productId,
         type,
         qty,
@@ -718,35 +1394,29 @@ app.post(
       );
 
       db.exec("COMMIT");
+
+      res.json({
+        success: true,
+        message:
+          `${type} completed`,
+        stock: newStock,
+      });
     } catch (error) {
       try {
         db.exec("ROLLBACK");
-      } catch {
-        // Ignore rollback error.
-      }
+      } catch {}
 
       console.error(
         "Movement error:",
         error
       );
 
-      return res.status(500).json({
+      res.status(500).json({
         success: false,
         message:
           "Unable to record this movement",
       });
     }
-
-    // -----------------------------------------------
-    // RESPONSE
-    // -----------------------------------------------
-
-    res.json({
-      success: true,
-      message:
-        `${type} completed`,
-      stock: newStock,
-    });
   }
 );
 
@@ -758,22 +1428,34 @@ app.get(
   "/api/movements",
   authenticate,
   (req, res) => {
-    const movements = db
-      .prepare(`
-        SELECT
-          movements.*,
-          products.name AS product_name,
-          products.sku,
-          products.uom
-        FROM movements
-        JOIN products
-          ON products.id =
-             movements.product_id
-        ORDER BY movements.id DESC
-      `)
-      .all();
+    try {
+      const movements =
+        db.prepare(`
+          SELECT
+            movements.*,
+            products.name AS product_name,
+            products.sku,
+            products.uom
+          FROM movements
+          JOIN products
+            ON products.id =
+               movements.product_id
+          ORDER BY movements.id DESC
+        `).all();
 
-    res.json(movements);
+      res.json(movements);
+    } catch (error) {
+      console.error(
+        "Movement history error:",
+        error
+      );
+
+      res.status(500).json({
+        success: false,
+        message:
+          "Unable to load movement history",
+      });
+    }
   }
 );
 
