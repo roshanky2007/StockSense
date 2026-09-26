@@ -1,10 +1,10 @@
-# StockSense – Inventory Management System
+# StockSense – Inventory Management System.
 
 StockSense is a modular Inventory Management System (IMS) designed to digitize and streamline stock-related operations within a business.
 
 The system provides centralized inventory management instead of relying on manual registers, spreadsheets, and scattered tracking methods.
 
-## Features
+## Features!
 
 ### Authentication
 - User signup and login
