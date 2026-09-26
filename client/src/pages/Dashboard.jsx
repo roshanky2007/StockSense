@@ -111,24 +111,9 @@ function Icon({ name, size = 18 }) {
       </svg>
     ),
 
-    plus: (
-      <svg {...common}>
-        <path d="M12 5v14" />
-        <path d="M5 12h14" />
-      </svg>
-    ),
-
     check: (
       <svg {...common}>
         <path d="m5 12 4 4L19 6" />
-      </svg>
-    ),
-
-    warehouse: (
-      <svg {...common}>
-        <path d="M3 10 12 4l9 6" />
-        <path d="M5 9v11h14V9" />
-        <path d="M9 20v-6h6v6" />
       </svg>
     ),
 
@@ -148,29 +133,24 @@ function AnimatedNumber({ value }) {
 
   useEffect(() => {
     let frame;
-    const startValue = 0;
-    const startTime = performance.now();
+    const start = performance.now();
     const duration = 650;
 
-    const animate = (time) => {
+    function animate(now) {
       const progress = Math.min(
-        (time - startTime) / duration,
+        (now - start) / duration,
         1
       );
 
       const eased =
         1 - Math.pow(1 - progress, 3);
 
-      const current =
-        startValue +
-        (target - startValue) * eased;
-
-      setNumber(current);
+      setNumber(target * eased);
 
       if (progress < 1) {
         frame = requestAnimationFrame(animate);
       }
-    };
+    }
 
     frame = requestAnimationFrame(animate);
 
@@ -219,7 +199,7 @@ export default function Dashboard() {
         return;
       }
 
-      setDashboard(dashboardResult.data);
+      setDashboard(dashboardResult.data || {});
       setProducts(productsResult.data || []);
     } catch {
       setError(
@@ -235,8 +215,61 @@ export default function Dashboard() {
     loadDashboard(true);
   }, []);
 
+  /* =====================================================
+     INVENTORY HEALTH
+     Health = average stock coverage against minimum stock
+  ===================================================== */
+
+  const inventoryStats = useMemo(() => {
+    let healthy = 0;
+    let low = 0;
+    let out = 0;
+    let coverageTotal = 0;
+
+    products.forEach((product) => {
+      const stock = Number(product.stock || 0);
+      const minimum = Number(product.min_stock || 0);
+
+      if (stock <= 0) {
+        out += 1;
+        coverageTotal += 0;
+        return;
+      }
+
+      if (stock <= minimum) {
+        low += 1;
+      } else {
+        healthy += 1;
+      }
+
+      const coverage =
+        minimum > 0
+          ? Math.min(
+              100,
+              (stock / minimum) * 100
+            )
+          : 100;
+
+      coverageTotal += coverage;
+    });
+
+    const healthPercent =
+      products.length > 0
+        ? Math.round(
+            coverageTotal / products.length
+          )
+        : 0;
+
+    return {
+      healthy,
+      low,
+      out,
+      healthPercent,
+    };
+  }, [products]);
+
   const attentionProducts = useMemo(() => {
-    return products
+    return [...products]
       .filter(
         (product) =>
           Number(product.stock || 0) <=
@@ -248,21 +281,6 @@ export default function Dashboard() {
           Number(b.stock || 0)
       );
   }, [products]);
-
-  const healthyProducts = useMemo(() => {
-    return products.filter(
-      (product) =>
-        Number(product.stock || 0) >
-        Number(product.min_stock || 0)
-    ).length;
-  }, [products]);
-
-  const healthPercent =
-    products.length > 0
-      ? Math.round(
-          (healthyProducts / products.length) * 100
-        )
-      : 0;
 
   const greeting = getGreeting();
 
@@ -295,15 +313,13 @@ export default function Dashboard() {
 
           <button
             className="dashboard-v2-refresh"
-            onClick={() =>
-              loadDashboard(false)
-            }
-            title="Refresh dashboard"
+            onClick={() => loadDashboard(false)}
           >
             <Icon
               name="refresh"
               size={17}
             />
+
             {refreshing
               ? "Refreshing..."
               : "Refresh"}
@@ -345,11 +361,7 @@ export default function Dashboard() {
             icon="warning"
             tone="orange"
             label="Needs Reorder"
-            value={
-              dashboard?.reorderRequired ||
-              dashboard?.lowStock ||
-              0
-            }
+            value={inventoryStats.low}
             loading={loading}
           />
 
@@ -357,9 +369,7 @@ export default function Dashboard() {
             icon="warning"
             tone="red"
             label="Out of Stock"
-            value={
-              dashboard?.outOfStock || 0
-            }
+            value={inventoryStats.out}
             loading={loading}
           />
 
@@ -370,7 +380,6 @@ export default function Dashboard() {
         <section className="dashboard-v2-section">
 
           <div className="dashboard-v2-section-heading">
-
             <div>
               <h2>
                 Quick Actions
@@ -381,7 +390,6 @@ export default function Dashboard() {
                 need.
               </p>
             </div>
-
           </div>
 
           <div className="dashboard-v2-actions">
@@ -418,11 +426,11 @@ export default function Dashboard() {
 
         </section>
 
-        {/* MAIN CONTENT */}
+        {/* INVENTORY HEALTH + ATTENTION */}
 
         <section className="dashboard-v2-grid">
 
-          {/* STOCK HEALTH */}
+          {/* HEALTH */}
 
           <div className="dashboard-v2-panel">
 
@@ -434,13 +442,13 @@ export default function Dashboard() {
                 </h2>
 
                 <p>
-                  Current stock condition across
-                  your products.
+                  Average stock coverage against
+                  minimum levels.
                 </p>
               </div>
 
               <div className="dashboard-v2-health-number">
-                {healthPercent}%
+                {inventoryStats.healthPercent}%
               </div>
 
             </div>
@@ -448,15 +456,6 @@ export default function Dashboard() {
             <div className="dashboard-v2-health">
 
               <div className="dashboard-v2-health-ring">
-                <div>
-                  <strong>
-                    {healthPercent}%
-                  </strong>
-
-                  <span>
-                    healthy
-                  </span>
-                </div>
 
                 <svg
                   viewBox="0 0 100 100"
@@ -478,11 +477,21 @@ export default function Dashboard() {
                       strokeDashoffset:
                         264 -
                         (264 *
-                          healthPercent) /
+                          inventoryStats.healthPercent) /
                           100,
                     }}
                   />
                 </svg>
+
+                <div>
+                  <strong>
+                    {inventoryStats.healthPercent}%
+                  </strong>
+
+                  <span>
+                    stock coverage
+                  </span>
+                </div>
 
               </div>
 
@@ -490,25 +499,19 @@ export default function Dashboard() {
 
                 <HealthStat
                   label="Healthy"
-                  value={healthyProducts}
+                  value={inventoryStats.healthy}
                   tone="healthy"
                 />
 
                 <HealthStat
                   label="Needs Reorder"
-                  value={
-                    dashboard?.reorderRequired ||
-                    dashboard?.lowStock ||
-                    0
-                  }
+                  value={inventoryStats.low}
                   tone="warning"
                 />
 
                 <HealthStat
                   label="Out of Stock"
-                  value={
-                    dashboard?.outOfStock || 0
-                  }
+                  value={inventoryStats.out}
                   tone="danger"
                 />
 
@@ -545,9 +548,9 @@ export default function Dashboard() {
 
             </div>
 
-            {attentionProducts.length ===
-            0 ? (
+            {attentionProducts.length === 0 ? (
               <div className="dashboard-v2-empty">
+
                 <div>
                   <Icon
                     name="check"
@@ -563,17 +566,17 @@ export default function Dashboard() {
                   No products currently require
                   replenishment.
                 </span>
+
               </div>
             ) : (
               <div className="dashboard-v2-alert-list">
 
                 {attentionProducts
-                  .slice(0, 4)
+                  .slice(0, 5)
                   .map((product) => {
+
                     const stock =
-                      Number(
-                        product.stock || 0
-                      );
+                      Number(product.stock || 0);
 
                     const minimum =
                       Number(
@@ -584,8 +587,7 @@ export default function Dashboard() {
                       minimum > 0
                         ? Math.min(
                             100,
-                            (stock /
-                              minimum) *
+                            (stock / minimum) *
                               100
                           )
                         : 0;
@@ -639,8 +641,7 @@ export default function Dashboard() {
                           </strong>
 
                           <span>
-                            minimum{" "}
-                            {minimum}{" "}
+                            minimum {minimum}{" "}
                             {product.uom}
                           </span>
 
@@ -687,8 +688,8 @@ export default function Dashboard() {
               </h2>
 
               <p>
-                Documents currently moving through
-                your inventory workflow.
+                Documents and inventory activity
+                currently in the system.
               </p>
             </div>
 
@@ -718,18 +719,17 @@ export default function Dashboard() {
               icon="transfer"
               label="Scheduled Transfers"
               value={
-                dashboard?.scheduledTransfers ||
-                0
+                dashboard?.scheduledTransfers || 0
               }
               href="/operations/transfers"
             />
 
             <Operation
               icon="activity"
-              label="Movement History"
+              label="Recent Movements"
               value={
-                dashboard?.recentMovements
-                  ?.length || 0
+                dashboard?.recentMovements?.length ||
+                0
               }
               href="/operations/move-history"
             />
@@ -750,13 +750,12 @@ export default function Dashboard() {
               </h2>
 
               <p>
-                Latest changes recorded in inventory.
+                Latest inventory movements recorded
+                by StockSense.
               </p>
             </div>
 
-            <a
-              href="/operations/move-history"
-            >
+            <a href="/operations/move-history">
               View history
               <Icon
                 name="arrowRight"
@@ -770,8 +769,7 @@ export default function Dashboard() {
             <div className="dashboard-v2-loading">
               Loading activity...
             </div>
-          ) : dashboard?.recentMovements
-              ?.length ? (
+          ) : dashboard?.recentMovements?.length ? (
             <div className="dashboard-v2-activity-list">
 
               {dashboard.recentMovements
@@ -787,6 +785,7 @@ export default function Dashboard() {
             </div>
           ) : (
             <div className="dashboard-v2-empty activity">
+
               <Icon
                 name="activity"
                 size={20}
@@ -800,6 +799,7 @@ export default function Dashboard() {
                 Inventory movements will appear
                 here as operations are completed.
               </span>
+
             </div>
           )}
 
@@ -809,6 +809,10 @@ export default function Dashboard() {
     </Shell>
   );
 }
+
+/* =====================================================
+   COMPONENTS
+===================================================== */
 
 function Kpi({
   icon,
@@ -838,9 +842,7 @@ function Kpi({
           <div className="dashboard-v2-skeleton" />
         ) : (
           <strong>
-            <AnimatedNumber
-              value={value}
-            />
+            <AnimatedNumber value={value} />
           </strong>
         )}
       </div>
@@ -868,13 +870,9 @@ function QuickAction({
       </div>
 
       <div>
-        <strong>
-          {title}
-        </strong>
+        <strong>{title}</strong>
 
-        <span>
-          {description}
-        </span>
+        <span>{description}</span>
       </div>
 
       <Icon
@@ -1023,8 +1021,7 @@ function Activity({
           className={current.className}
         >
           {current.prefix}
-          {movement.quantity}
-          {" "}
+          {movement.quantity}{" "}
           {movement.uom || ""}
         </strong>
 
@@ -1044,8 +1041,7 @@ function Activity({
 }
 
 function getGreeting() {
-  const hour =
-    new Date().getHours();
+  const hour = new Date().getHours();
 
   if (hour < 12) {
     return "Good morning";
@@ -1060,12 +1056,11 @@ function getGreeting() {
 
 function getFirstName() {
   try {
-    const user =
-      JSON.parse(
-        localStorage.getItem(
-          "stocksenseUser"
-        ) || "null"
-      );
+    const user = JSON.parse(
+      localStorage.getItem(
+        "stocksenseUser"
+      ) || "null"
+    );
 
     return (
       user?.name
@@ -1087,11 +1082,7 @@ function formatDate(value) {
     value.replace(" ", "T") + "Z"
   );
 
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
+  if (Number.isNaN(date.getTime())) {
     return value;
   }
 
