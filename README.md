@@ -4,6 +4,12 @@ StockSense is a modular Inventory Management System (IMS) designed to digitize a
 
 The system provides centralized inventory management instead of relying on manual registers, spreadsheets, and scattered tracking methods.
 
+Live 
+
+DEPLOYMENT LINK IS LIVE!! : https://stock-sense-six-psi.vercel.app/login
+Deployment Note:
+Currently, the application is optimized for laptop and desktop environments. A mobile-responsive version is currently under development and will be made available soon.
+
 ## Features!
 
 ### Authentication
