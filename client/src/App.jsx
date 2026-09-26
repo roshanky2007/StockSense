@@ -11,6 +11,7 @@ import ForgotPassword from "./pages/ForgotPassword";
 import Dashboard from "./pages/Dashboard";
 import Products from "./pages/Products";
 import Receipts from "./pages/Receipts";
+import DeliveryOrders from "./pages/DeliveryOrders";
 import MovementPage from "./pages/MovementPage";
 import MoveHistory from "./pages/MoveHistory";
 import Settings from "./pages/Settings";
@@ -90,14 +91,7 @@ function App() {
           path="/operations/deliveries"
           element={
             <ProtectedRoute>
-              <MovementPage
-                type="DELIVERY"
-                title="Delivery Orders"
-                description="Ship stock out to customers."
-                icon="↑"
-                quantityLabel="Quantity to Deliver"
-                referenceLabel="Sales Order Reference"
-              />
+              <DeliveryOrders />
             </ProtectedRoute>
           }
         />
@@ -109,11 +103,6 @@ function App() {
             <ProtectedRoute>
               <MovementPage
                 type="TRANSFER"
-                title="Internal Transfers"
-                description="Move stock between warehouses or locations."
-                icon="⇄"
-                quantityLabel="Quantity to Transfer"
-                referenceLabel="Reference"
                 showLocations
               />
             </ProtectedRoute>
@@ -127,11 +116,6 @@ function App() {
             <ProtectedRoute>
               <MovementPage
                 type="ADJUSTMENT"
-                title="Inventory Adjustments"
-                description="Reconcile recorded stock with the physical count."
-                icon="±"
-                quantityLabel="Counted Quantity"
-                referenceLabel="Reason for Adjustment"
               />
             </ProtectedRoute>
           }
@@ -171,7 +155,10 @@ function App() {
         <Route
           path="*"
           element={
-            <Navigate to="/" replace />
+            <Navigate
+              to="/"
+              replace
+            />
           }
         />
 
